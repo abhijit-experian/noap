@@ -13,25 +13,18 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
   #   "1.2" => "http://schemas.xmlsoap.org/wsdl/soap12/"
   # }
 
-  import SweetXml, only: [xpath: 2, xpath: 3, sigil_x: 2, parse: 2]
-
-  import __MODULE__.NamespaceUtil,
-    only: [
-      add_schema_namespace: 2,
-      add_protocol_namespace: 2,
-      add_soap_namespace: 2
-    ]
+  import Meeseeks.XPath
 
   alias __MODULE__.{OperationWrap, Util}
 
-  # defp soap_version, do: Application.fetch_env!(:soap, :globals)[:version]
-  # defp soap_version, do: "1.1"
-  # defp soap_version(opts) when is_list(opts), do: Keyword.get(opts, :soap_version, soap_version())
+  @wsdl_namespace "http://schemas.xmlsoap.org/wsdl/"
+  @soap_namespace "http://schemas.xmlsoap.org/wsdl/soap/"
+  @schema_namespace "http://www.w3.org/2001/XMLSchema"
 
   def new(wsdl_path, module_prefix, options \\ []) do
     module_prefix = Util.module_to_string(module_prefix)
     str = File.read!(wsdl_path)
-    doc = parse(str, namespace_conformant: true)
+    doc = Meeseeks.parse(str, :xml)
     schema_ns = Noap.XMLUtil.find_namespace(doc, "http://www.w3.org/2001/XMLSchema")
     endpoint = get_endpoint(doc)
     namespace_map = get_namespace_map(doc)
@@ -78,21 +71,38 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
   end
 
   defp get_namespace_map(doc) do
-    doc
-    |> xpath(~x"./namespace::*"l)
-    |> Enum.into(%{}, &get_namespace/1)
+    # Meeseeks doesn't support namespace axis directly
+    # We'll extract namespaces by checking the root element's xmlns attributes
+    root = Meeseeks.one(doc, xpath("/*"))
+
+    case root do
+      nil -> %{}
+      element -> extract_namespaces_from_element(element, %{})
+    end
   end
 
-  defp get_namespace({_, _, _, ns, namespace}) do
-    {to_string(ns), to_string(namespace)}
+  defp extract_namespaces_from_element(element, acc) do
+    # Check default namespace
+    acc =
+      case Meeseeks.attr(element, "xmlns") do
+        nil -> acc
+        value -> Map.put(acc, "", value)
+      end
+
+    # Check common prefixes
+    common_prefixes = ["soap", "wsdl", "xsd", "xs", "tns", "s", "body", "ns0", "ns1", "ns2", "ns3", "ns4"]
+    Enum.reduce(common_prefixes, acc, fn prefix, acc ->
+      case Meeseeks.attr(element, "xmlns:#{prefix}") do
+        nil -> acc
+        value -> Map.put(acc, prefix, value)
+      end
+    end)
   end
 
   defp get_schema_map(doc, schema_ns, module_prefix, namespace_map, options) do
     doc
-    |> xpath(
-      ~x"wsdl:types/xsd:schema"l
-      |> add_protocol_namespace("wsdl")
-      |> add_schema_namespace("xsd")
+    |> Meeseeks.all(
+      xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='types']/*[namespace-uri()='#{@schema_namespace}' and local-name()='schema']")
     )
     |> Enum.into(
       %{},
@@ -111,37 +121,52 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
     )
   end
 
-  @spec get_endpoint(String.t()) :: String.t()
+  @spec get_endpoint(Meeseeks.Document.t()) :: String.t()
   defp get_endpoint(doc) do
-    doc
-    |> xpath(
-      ~x"wsdl:service/wsdl:port/soap:address/@location"s
-      |> add_protocol_namespace("wsdl")
-      |> add_soap_namespace("soap")
-    )
+    address_node =
+      doc
+      |> Meeseeks.one(
+        xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='service']/*[namespace-uri()='#{@wsdl_namespace}' and local-name()='port']/*[namespace-uri()='#{@soap_namespace}' and local-name()='address']")
+      )
+
+    case address_node do
+      nil -> ""
+      node -> Meeseeks.attr(node, "location") || ""
+    end
   end
 
   defp get_operations(doc, schema_map, message_map, _opts) do
-    port_type_node = xpath(doc, ~x"wsdl:portType" |> add_protocol_namespace("wsdl"))
-    port_type_name = xpath(port_type_node, ~x"@name"s)
+    port_type_node = Meeseeks.one(doc, xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='portType']"))
+    port_type_name =
+      case port_type_node do
+        nil -> ""
+        node -> Meeseeks.attr(node, "name") || ""
+      end
 
     binding_node =
-      xpath(doc, ~x"wsdl:binding[@name='#{port_type_name}']"e |> add_protocol_namespace("wsdl")) ||
-        xpath(doc, ~x"wsdl:binding"e |> add_protocol_namespace("wsdl"))
+      if port_type_name != "" do
+        Meeseeks.one(
+          doc,
+          xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='binding' and @name='#{port_type_name}']")
+        )
+      else
+        nil
+      end || Meeseeks.one(doc, xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='binding']"))
 
     port_type_node
-    |> xpath(
-      ~x"wsdl:operation"l
-      |> add_protocol_namespace("wsdl")
-    )
-    |> Enum.map(&build_operation(binding_node, &1, schema_map, message_map))
+    |> case do
+      nil -> []
+      node ->
+        Meeseeks.all(node, xpath(".//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='operation']"))
+        |> Enum.map(&build_operation(binding_node, &1, schema_map, message_map))
+    end
   end
 
   defp build_operation(binding_node, op_node, schema_map, message_map) do
-    name = xpath(op_node, ~x"./@name"s)
+    name = Meeseeks.attr(op_node, "name") || ""
     soap_action = get_soap_action(binding_node, name) || ""
-    input_message_name = get_operation_arg_name(op_node, ~x"./wsdl:input/@message"s)
-    output_message_name = get_operation_arg_name(op_node, ~x"./wsdl:output/@message"s)
+    input_message_name = get_operation_arg_name(op_node, "input", "message")
+    output_message_name = get_operation_arg_name(op_node, "output", "message")
     input_name = message_map[input_message_name][:name]
     output_name = message_map[output_message_name][:name]
     input_header = get_operation_input_header(op_node)
@@ -178,60 +203,74 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
   defp get_soap_action(nil, _name), do: nil
 
   defp get_soap_action(binding_node, name) do
-    xpath(
-      binding_node,
-      ~x"wsdl:operation[@name='#{name}']/soap:operation/@soapAction"s
-      |> add_protocol_namespace("wsdl")
-      |> add_soap_namespace("soap")
-    )
+    operation_node =
+      Meeseeks.one(
+        binding_node,
+        xpath(".//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='operation' and @name='#{name}']")
+      )
+
+    case operation_node do
+      nil -> nil
+      node ->
+        soap_op = Meeseeks.one(node, xpath(".//*[namespace-uri()='#{@soap_namespace}' and local-name()='operation']"))
+        case soap_op do
+          nil -> nil
+          soap_node -> Meeseeks.attr(soap_node, "soapAction") || nil
+        end
+    end
   end
 
-  defp get_operation_arg_name(op_node, path) do
-    op_node
-    |> xpath(path |> add_protocol_namespace("wsdl"))
-    |> String.split(":", parts: 2)
-    |> Enum.at(1)
+  defp get_operation_arg_name(op_node, element_name, attr_name) do
+    input_node = Meeseeks.one(op_node, xpath(".//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='#{element_name}']"))
+    case input_node do
+      nil -> ""
+      node ->
+        attr_value = Meeseeks.attr(node, attr_name) || ""
+        String.split(attr_value, ":", parts: 2)
+        |> Enum.at(1) || ""
+    end
   end
 
   defp get_operation_input_header(op_node) do
-    xpath(
-      op_node,
-      ~x"./wsdl:input/soap:header"
-      |> add_protocol_namespace("wsdl")
-      |> add_soap_namespace("soap")
-    )
-    |> get_operation_input_header_message_part()
+    input_node = Meeseeks.one(op_node, xpath(".//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='input']"))
+    case input_node do
+      nil -> %{}
+      node ->
+        header_node = Meeseeks.one(node, xpath(".//*[namespace-uri()='#{@soap_namespace}' and local-name()='header']"))
+        get_operation_input_header_message_part(header_node)
+    end
   end
 
   defp get_operation_input_header_message_part(nil), do: %{}
 
   defp get_operation_input_header_message_part(header_node) do
-    xpath(header_node, ~x".", message: ~x"./@message"s, part: ~x"./@part"s)
+    %{
+      message: Meeseeks.attr(header_node, "message") || "",
+      part: Meeseeks.attr(header_node, "part") || ""
+    }
   end
 
   defp get_message_map(doc) do
     doc
-    |> xpath(
-      ~x"wsdl:message"l
-      |> add_protocol_namespace("wsdl")
-    )
+    |> Meeseeks.all(xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='message']"))
     |> Enum.reduce(
       %{},
       fn node, map ->
-        name = xpath(node, ~x"./@name"s)
+        name = Meeseeks.attr(node, "name") || ""
         Map.put(map, name, get_message_part(node))
       end
     )
   end
 
   defp get_message_part(element) do
-    [ns, name] =
-      xpath(
-        element,
-        ~x"wsdl:part/@element"s |> add_protocol_namespace("wsdl")
-      )
-      |> String.split(":", parts: 2)
+    part_node = Meeseeks.one(element, xpath(".//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='part']"))
+    element_attr =
+      case part_node do
+        nil -> ""
+        node -> Meeseeks.attr(node, "element") || ""
+      end
 
-    %{ns: String.to_atom(ns), name: name}
+    [ns, name] = String.split(element_attr, ":", parts: 2)
+    %{ns: String.to_atom(ns || ""), name: name || ""}
   end
 end

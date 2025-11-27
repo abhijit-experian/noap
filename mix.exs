@@ -29,7 +29,7 @@ defmodule Noap.MixProject do
       {:finch, "~> 0.20", optional: true},
       {:credo, "~> 1.7", only: [:dev, :test]},
       {:ex_doc, "~> 0.39", only: [:dev, :docs], runtime: false},
-      {:sweet_xml, "~> 0.7"},
+      {:meeseeks, "~> 0.18"},
       {:xml_builder, "~> 2.4"},
       {:yaml_elixir, "~> 2.12", optional: true}
     ]

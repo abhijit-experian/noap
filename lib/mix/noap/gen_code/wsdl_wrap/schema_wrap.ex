@@ -23,21 +23,14 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
     "string" => :string
   }
 
-  alias Mix.Noap.GenCode.WSDLWrap
   alias Mix.Noap.GenCode.WSDLWrap.{Action, ComplexType, Field, Options, Util}
-  import SweetXml, only: [xpath: 2, xpath: 3, sigil_x: 2]
+  import Meeseeks.XPath
 
-  import WSDLWrap.NamespaceUtil, only: [add_schema_namespace: 2]
+  @schema_namespace "http://www.w3.org/2001/XMLSchema"
 
   def new(schema_ns, parent_module, schema_element, namespace_map, options) do
-    %{
-      target_namespace: target_namespace,
-      element_form_default: element_form_default
-    } =
-      xpath(schema_element, ~x".",
-        target_namespace: ~x"./@targetNamespace"s,
-        element_form_default: ~x"./@elementFormDefault"s
-      )
+    target_namespace = Meeseeks.attr(schema_element, "targetNamespace") || ""
+    element_form_default = Meeseeks.attr(schema_element, "elementFormDefault") || ""
 
     if target_namespace == "" do
       raise "Not sure how to handle with no targetNamespace: #{inspect(schema_element)}"
@@ -51,18 +44,15 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
 
     top_type_elements =
       schema_element
-      |> xpath(
-        ~x"xsd:element"l
-        |> add_schema_namespace("xsd")
-      )
+      |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='element']"))
 
-    top_types =
+      top_types =
       top_type_elements
       |> Enum.into(
         %{},
         fn element ->
-          name = element |> xpath(~x"@name"s)
-          action_with_namespace = element |> xpath(~x"@type"s)
+          name = Meeseeks.attr(element, "name") || ""
+          action_with_namespace = Meeseeks.attr(element, "type") || ""
           {name, Action.new(name, action_with_namespace, namespace_map)}
         end
       )
@@ -80,10 +70,7 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
 
     complex_type_map =
       schema_element
-      |> xpath(
-        ~x"xsd:complexType"l
-        |> add_schema_namespace("xsd")
-      )
+      |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']"))
       |> Enum.map(&parse_complex_type(schema, &1, nil))
       |> Enum.into(%{}, &{&1.name, &1})
 
@@ -134,13 +121,16 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
   end
 
   defp parse_complex_type(schema, parent_element, parent_complex_type) do
-    name = parent_element |> xpath(~x"@name"s)
+    name = Meeseeks.attr(parent_element, "name") || ""
 
     if name == "" do
       raise "Not sure how to handle complex_type without name #{inspect(parent_element)}"
     end
 
-    elements = xpath(parent_element, ~x"xsd:sequence/xsd:element"l |> add_schema_namespace("xsd"))
+    elements = Meeseeks.all(
+      parent_element,
+      xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='sequence']/*[namespace-uri()='#{@schema_namespace}' and local-name()='element']")
+    )
     parse_complex_type(schema, name, elements, parent_complex_type)
   end
 
@@ -160,13 +150,15 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
   end
 
   defp parse_field(schema, element, parent_complex_type) do
-    xml_name = element |> xpath(~x"@name"s)
+    xml_name = Meeseeks.attr(element, "name") || ""
 
     if xml_name == "" do
       raise "Not sure how to parse type without name #{inspect(element)}"
     end
 
-    case element |> xpath(~x"@type"s) do
+    xml_type = Meeseeks.attr(element, "type") || ""
+
+    case xml_type do
       "" ->
         field_type = parse_type(schema, element, parent_complex_type)
 
@@ -176,7 +168,8 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
               :field
 
             true ->
-              xpath(element, ~x"@maxOccurs"s) |> Util.max_occurs_embed()
+              max_occurs = Meeseeks.attr(element, "maxOccurs") || ""
+              Util.max_occurs_embed(max_occurs)
           end
 
         Field.new(embeds, xml_name, field_type)
@@ -204,17 +197,20 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
             convert_type(schema, element, name)
 
           true ->
-            embeds = xpath(element, ~x"@maxOccurs"s) |> Util.max_occurs_embed()
+            max_occurs = Meeseeks.attr(element, "maxOccurs") || ""
+            embeds = Util.max_occurs_embed(max_occurs)
             {embeds, name}
         end
     end
   end
 
   defp parse_type(schema, parent_element, parent_complex_type) do
-    name = parent_element |> xpath(~x"@name"s)
+    name = Meeseeks.attr(parent_element, "name") || ""
+
+    type = Meeseeks.attr(parent_element, "type") || ""
 
     cond do
-      (type = parent_element |> xpath(~x"@type"s)) != "" ->
+      type != "" ->
         {_field_or_embeds, ctype} = convert_type(schema, parent_element, type)
         ctype
 
@@ -222,16 +218,16 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
         parse_complex_type(schema, name, complex_elements, parent_complex_type)
 
       (simple_type_restriction = get_simple_type_restriction_element(parent_element)) != nil ->
-        type = simple_type_restriction |> xpath(~x"@base"s)
+        base_type = Meeseeks.attr(simple_type_restriction, "base") || ""
 
-        if type == "" do
+        if base_type == "" do
           raise(
             "Not sure how to handle name=#{name} simple_type_restriction " <>
               inspect(simple_type_restriction)
           )
         end
 
-        {_field_or_embeds, ctype} = convert_type(schema, parent_element, type)
+        {_field_or_embeds, ctype} = convert_type(schema, parent_element, base_type)
         ctype
 
       true ->
@@ -242,11 +238,15 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
 
   defp get_complex_type_elements(parent_element) do
     parent_element
-    |> xpath(~x"xsd:complexType/xsd:sequence/xsd:element"l |> add_schema_namespace("xsd"))
+    |> Meeseeks.all(
+      xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']/*[namespace-uri()='#{@schema_namespace}' and local-name()='sequence']/*[namespace-uri()='#{@schema_namespace}' and local-name()='element']")
+    )
   end
 
   defp get_simple_type_restriction_element(parent_element) do
     parent_element
-    |> xpath(~x"xsd:simpleType/xsd:restriction"e |> add_schema_namespace("xsd"))
+    |> Meeseeks.one(
+      xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='simpleType']/*[namespace-uri()='#{@schema_namespace}' and local-name()='restriction']")
+    )
   end
 end

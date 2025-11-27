@@ -22,7 +22,7 @@ defmodule CountryInfoService.MixProject do
   defp deps do
     [
       {:noap, path: "../.."},
-      {:finch, "~> 0.13"}
+      {:finch, "~> 0.20"}
     ]
   end
 end
