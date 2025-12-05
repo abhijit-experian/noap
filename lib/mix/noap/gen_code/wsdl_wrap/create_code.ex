@@ -68,11 +68,13 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   end
 
   defp process_complex_type_overrides(complex_type, complex_type_map, type_map, overrides) do
+    embed_one_opts = overrides[:embeds_one] || overrides["embeds_one"]
     {embed_one_fields, embed_one_xml_names} =
-      process_embed_overrides(complex_type, type_map, :embeds_one, overrides[:embeds_one])
+      process_embed_overrides(complex_type, type_map, :embeds_one, embed_one_opts)
 
+    embed_many_opts = overrides[:embeds_many] || overrides["embeds_many"]
     {embed_many_fields, embed_many_xml_names} =
-      process_embed_overrides(complex_type, type_map, :embeds_many, overrides[:embeds_many])
+      process_embed_overrides(complex_type, type_map, :embeds_many, embed_many_opts)
 
     replaced_xml_names = embed_one_xml_names ++ embed_many_xml_names
 
@@ -101,13 +103,18 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   end
 
   defp process_embed_overrides(complex_type, type_map, one_or_many, embed_overrides) do
-    (embed_overrides || [])
+    embed_overrides
+    |> case do
+      nil -> []
+      map when is_map(map) -> map
+      list when is_list(list) -> list
+    end
     # Allows maintaining of key order (doesn't work!)
     # |> Enum.to_list()
     |> Enum.reduce(
       {[], []},
       fn {name, options}, {embed_fields, replaced_xml_names} ->
-        {type, options} = Map.pop(options, :type)
+        type = options[:type] || options["type"]
 
         if is_nil(type) do
           raise "Must specify type for overfide of #{name} in #{complex_type.name}"
@@ -116,6 +123,8 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
         if !is_atom(type) do
           raise "Must specify an atom for type for override of #{name} in #{complex_type.name}"
         end
+
+        options = Map.delete(options, :type) |> Map.delete("type")
 
         embed_field = Field.new_override(one_or_many, name, type, options)
         embed_type = type_map[type]
@@ -137,8 +146,21 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   end
 
   defp get_nested_overrides(overrides, xml_name) do
-    xml_name = to_string(xml_name)
-    overrides[xml_name] || %{}
+    xml_name_str = to_string(xml_name)
+
+    try do
+      xml_name_atom = String.to_existing_atom(xml_name_str)
+
+      cond do
+        Map.has_key?(overrides, xml_name_str) -> overrides[xml_name_str]
+        Map.has_key?(overrides, xml_name_atom) -> overrides[xml_name_atom]
+        true -> %{}
+      end
+    rescue
+      ArgumentError ->
+        # If atom doesn't exist, just try string key
+        overrides[xml_name_str] || %{}
+    end
   end
 
   defp create_complex_type_code(
@@ -171,16 +193,34 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
          overrides
        )
        when is_binary(child_complex_type_name) do
-    child_complex_type = complex_type_map[child_complex_type_name]
+    # Check if it's a simple type name that should be an atom
+    simple_type_map = %{
+      "boolean" => :boolean,
+      "date" => :date,
+      "dateTime" => :datetime,
+      "double" => :float,
+      "float" => :float,
+      "int" => :integer,
+      "integer" => :integer,
+      "long" => :integer,
+      "string" => :string
+    }
 
-    if is_nil(child_complex_type) do
-      raise "Not sure how to decipher complex_type=#{child_complex_type_name}"
+    case simple_type_map[child_complex_type_name] do
+      nil ->
+        # It's a complex type name
+        child_complex_type = complex_type_map[child_complex_type_name]
+        if is_nil(child_complex_type) do
+          raise "Not sure how to decipher complex_type=#{child_complex_type_name}"
+        end
+        child_complex_type =
+          process_complex_type_overrides(child_complex_type, complex_type_map, type_map, overrides)
+        %{field | type: child_complex_type}
+
+      simple_type ->
+        # It's a simple type, convert to atom
+        %{field | type: simple_type}
     end
-
-    child_complex_type =
-      process_complex_type_overrides(child_complex_type, complex_type_map, type_map, overrides)
-
-    %{field | type: child_complex_type}
   end
 
   defp convert_field(
@@ -196,7 +236,8 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   end
 
   defp convert_field(field, _complex_type_map, _type_map, overrides) do
-    convert_field_type(field, overrides[:type])
+    type = overrides[:type] || overrides["type"]
+    convert_field_type(field, type)
   end
 
   defp convert_field_type(field, nil), do: field

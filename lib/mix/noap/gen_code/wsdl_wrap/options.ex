@@ -37,7 +37,12 @@ defmodule Mix.Noap.GenCode.WSDLWrap.Options do
 
   def overrides(options) do
     case options[:overrides] do
-      path when is_binary(path) -> YamlElixir.read_from_file!(path, atoms: true)
+      path when is_binary(path) ->
+        if Code.ensure_loaded?(YamlElixir) and function_exported?(YamlElixir, :read_from_file!, 2) do
+          apply(YamlElixir, :read_from_file!, [path, [atoms: true]])
+        else
+          raise "yaml_elixir dependency is required when using overrides from a file. Add {:yaml_elixir, \"~> 2.12\"} to your deps."
+        end
       map when is_map(map) -> map
       nil -> %{}
     end

@@ -46,6 +46,14 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       schema_element
       |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='element']"))
 
+    # Fallback: if namespace-uri() didn't work, try simple query
+    top_type_elements = if Enum.empty?(top_type_elements) do
+      schema_element
+      |> Meeseeks.all(xpath(".//element"))
+    else
+      top_type_elements
+    end
+
       top_types =
       top_type_elements
       |> Enum.into(
@@ -68,9 +76,24 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       complex_type_map: nil
     }
 
-    complex_type_map =
+    complex_type_elements = schema_element
+    |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']"))
+
+    # Fallback: if namespace-uri() didn't work, try simple query
+    complex_type_elements = if Enum.empty?(complex_type_elements) do
       schema_element
-      |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']"))
+      |> Meeseeks.all(xpath(".//complexType"))
+    else
+      complex_type_elements
+    end
+
+    complex_type_map =
+      complex_type_elements
+      |> Enum.filter(fn element ->
+        # Skip complexTypes without names (inline types)
+        name = Meeseeks.attr(element, "name")
+        name != nil && name != ""
+      end)
       |> Enum.map(&parse_complex_type(schema, &1, nil))
       |> Enum.into(%{}, &{&1.name, &1})
 
@@ -105,10 +128,17 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
     simple_type
   end
 
-  defp convert_name_to_complex_type(complex_type_map, complex_type_name)
-       when is_binary(complex_type_name) do
-    complex_type_map[complex_type_name] ||
-      raise "Couldn't find complex type of #{complex_type_name}"
+  defp convert_name_to_complex_type(complex_type_map, type_name)
+       when is_binary(type_name) do
+    # Check if it's a simple type name that should be converted to atom
+    simple_type = @type_to_simple_map[type_name]
+    if simple_type do
+      simple_type
+    else
+      # It's a complex type name
+      complex_type_map[type_name] ||
+        raise "Couldn't find complex type of #{type_name}"
+    end
   end
 
   defp add_to_complex_type_map(complex_type = %ComplexType{}, map) do
@@ -131,6 +161,13 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       parent_element,
       xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='sequence']/*[namespace-uri()='#{@schema_namespace}' and local-name()='element']")
     )
+
+    # Fallback: if namespace-uri() didn't work, try simple query
+    elements = if Enum.empty?(elements) do
+      Meeseeks.all(parent_element, xpath(".//sequence//element"))
+    else
+      elements
+    end
     parse_complex_type(schema, name, elements, parent_complex_type)
   end
 
@@ -237,16 +274,32 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
   end
 
   defp get_complex_type_elements(parent_element) do
-    parent_element
+    elements = parent_element
     |> Meeseeks.all(
       xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']/*[namespace-uri()='#{@schema_namespace}' and local-name()='sequence']/*[namespace-uri()='#{@schema_namespace}' and local-name()='element']")
     )
+
+    # Fallback: if namespace-uri() didn't work, try simple query
+    if Enum.empty?(elements) do
+      parent_element
+      |> Meeseeks.all(xpath(".//complexType//sequence//element"))
+    else
+      elements
+    end
   end
 
   defp get_simple_type_restriction_element(parent_element) do
-    parent_element
+    element = parent_element
     |> Meeseeks.one(
       xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='simpleType']/*[namespace-uri()='#{@schema_namespace}' and local-name()='restriction']")
     )
+
+    # Fallback: if namespace-uri() didn't work, try simple query
+    if is_nil(element) do
+      parent_element
+      |> Meeseeks.one(xpath(".//simpleType//restriction"))
+    else
+      element
+    end
   end
 end

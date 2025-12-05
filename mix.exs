@@ -31,7 +31,8 @@ defmodule Noap.MixProject do
       {:ex_doc, "~> 0.39", only: [:dev, :docs], runtime: false},
       {:meeseeks, "~> 0.18"},
       {:xml_builder, "~> 2.4"},
-      {:yaml_elixir, "~> 2.12", optional: true}
+      {:yaml_elixir, "~> 2.12", optional: true},
+      {:telemetry, "~> 1.0", override: true}
     ]
   end
 end
