@@ -23,7 +23,7 @@ defmodule DataProcessingService.MixProject do
     [
       {:noap, path: "../.."},
       {:finch, "~> 0.13"},
-      {:yaml_elixir, "~> 2.5"}
+      {:yaml_elixir, "2.11.0", override: true}
     ]
   end
 end

@@ -42,70 +42,20 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
     }
   end
 
-  defp find_complex_type(schema_map, message_map, message_name, namespace_map) do
+  defp find_complex_type(schema_map, message_map, message_name) do
     message = message_map[message_name]
 
     if is_nil(message) do
       raise "Could not find message matching #{message_name} for operation"
     end
 
-    # Resolve namespace prefix to URI
-    ns_uri = case message.ns do
-      ns when is_atom(ns) and ns != :"" ->
-        # Try to resolve prefix from namespace_map
-        ns_string = Atom.to_string(ns)
-        Map.get(namespace_map, ns_string, nil) ||
-        # Fallback: if it's "tns", try to get targetNamespace from schema_map keys
-        if ns_string == "tns" do
-          # Get the first schema's target_ns as fallback
-          case Map.keys(schema_map) |> List.first() do
-            nil -> nil
-            first_key -> first_key
-          end
-        else
-          nil
-        end
-      ns when is_binary(ns) -> ns
-      _ -> nil
-    end
-
-    schema = if ns_uri do
-      schema_map[ns_uri]
-    else
-      # Try direct lookup with the ns value (in case it's already a URI string)
-      schema_map[message.ns] ||
-      # If message.ns is an atom, try to find schema by matching target_ns
-      if is_atom(message.ns) and message.ns != :"" do
-        ns_string = Atom.to_string(message.ns)
-        # First try to match by target_ns
-        Enum.find_value(schema_map, fn {_uri, schema} ->
-          if schema.target_ns == message.ns, do: schema
-        end) ||
-        # If target_ns is empty, try to resolve from namespace_map and match by target_namespace URI
-        case Map.get(namespace_map, ns_string) do
-          resolved_uri when is_binary(resolved_uri) ->
-            # We found the URI for this prefix, now find the schema with matching target_namespace
-            Enum.find_value(schema_map, fn {uri, schema} ->
-              if uri == resolved_uri or schema.target_namespace == resolved_uri, do: schema
-            end)
-          _ ->
-            # Last resort: try to find by matching the namespace prefix string in the URI
-            # This handles cases where namespace_map wasn't populated correctly
-            Enum.find_value(schema_map, fn {uri, schema} ->
-              uri_string = to_string(uri)
-              if String.contains?(uri_string, ns_string) or
-                 (schema.target_namespace && String.contains?(schema.target_namespace, ns_string)), do: schema
-            end)
-        end
-      else
-        nil
-      end
-    end
+    # Direct lookup: schema_map is keyed by target_ns (atom) which matches message.ns
+    schema = schema_map[message.ns]
 
     if is_nil(schema) do
       # Provide more debugging info
-      target_ns_list = Enum.map(schema_map, fn {_uri, s} -> s.target_ns end)
-      raise "Could not find schema for message=#{inspect(message)}, ns_uri=#{inspect(ns_uri)}, message.ns=#{inspect(message.ns)}, available_schemas=#{inspect(Map.keys(schema_map))}, target_ns_list=#{inspect(target_ns_list)}"
+      target_ns_list = Enum.map(schema_map, fn {_ns, s} -> s.target_ns end)
+      raise "Could not find schema for message=#{inspect(message)}, message.ns=#{inspect(message.ns)}, available_schemas=#{inspect(Map.keys(schema_map))}, target_ns_list=#{inspect(target_ns_list)}"
     end
 
     action = schema.top_types[message.name]
@@ -132,6 +82,18 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
       nil -> %{}
       element -> extract_namespaces_from_element(element, %{})
     end
+
+    # Also extract namespaces from schema elements (they may define reqns/resns)
+    schema_elements = Meeseeks.all(doc, xpath("//*[namespace-uri()='#{@schema_namespace}' and local-name()='schema']"))
+    schema_elements = if Enum.empty?(schema_elements) do
+      Meeseeks.all(doc, xpath("//schema"))
+    else
+      schema_elements
+    end
+
+    namespace_map = Enum.reduce(schema_elements, namespace_map, fn schema_element, acc ->
+      extract_namespaces_from_element(schema_element, acc)
+    end)
 
     # Also get targetNamespace and map it to "tns" prefix if not already present
     target_ns = case root do
@@ -197,8 +159,8 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
             options
           )
 
-        # Key by target_namespace (string URI) not target_ns (atom)
-        {schema.target_namespace, schema}
+        # Key by target_ns (atom) to match message.ns
+        {schema.target_ns, schema}
       end
     )
   end
@@ -224,7 +186,7 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
     end
   end
 
-  defp get_operations(doc, schema_map, message_map, namespace_map, _opts) do
+  defp get_operations(doc, schema_map, message_map, _namespace_map, _opts) do
     # Try namespace-uri() first, fall back to simple query for default namespaces
     port_type_node = Meeseeks.one(doc, xpath("//*[namespace-uri()='#{@wsdl_namespace}' and local-name()='portType']"))
 
@@ -266,11 +228,11 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
           ops
         end
         ops
-        |> Enum.map(&build_operation(binding_node, &1, schema_map, message_map, namespace_map))
+        |> Enum.map(&build_operation(binding_node, &1, schema_map, message_map))
     end
   end
 
-  defp build_operation(binding_node, op_node, schema_map, message_map, namespace_map) do
+  defp build_operation(binding_node, op_node, schema_map, message_map) do
     name = Meeseeks.attr(op_node, "name") || ""
     soap_action = get_soap_action(binding_node, name) || ""
     input_message_name = get_operation_arg_name(op_node, "input", "message")
@@ -280,10 +242,10 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
     input_header = get_operation_input_header(op_node)
 
     {input_schema, input_complex_type} =
-      find_complex_type(schema_map, message_map, input_message_name, namespace_map)
+      find_complex_type(schema_map, message_map, input_message_name)
 
     {output_schema, output_complex_type} =
-      find_complex_type(schema_map, message_map, output_message_name, namespace_map)
+      find_complex_type(schema_map, message_map, output_message_name)
 
     action = input_schema.top_types[name]
 
@@ -429,15 +391,27 @@ defmodule Mix.Noap.GenCode.WSDLWrap do
     parts = String.split(element_attr, ":", parts: 2)
     case parts do
       [ns_prefix, name] ->
-        # Resolve namespace prefix to URI
-        ns_uri = Map.get(namespace_map, ns_prefix, nil)
-        # If we can't resolve, use the prefix as atom (for backward compatibility)
-        ns = if ns_uri, do: ns_uri, else: String.to_atom(ns_prefix)
+        # Use the prefix as atom to match schema_map keys (which are keyed by target_ns atoms)
+        # The schema_map is keyed by target_ns (atom like :tns, :reqns, :resns), not by URI strings
+        ns = String.to_atom(ns_prefix)
         %{ns: ns, name: name || ""}
       [name] ->
         # No prefix, try default namespace or empty
         default_ns = Map.get(namespace_map, "", nil)
-        ns = if default_ns, do: default_ns, else: :""
+        # If there's a default namespace, try to find its prefix in namespace_map
+        ns = if default_ns do
+          # Find the prefix that maps to this URI
+          found_prefix = Enum.find_value(namespace_map, fn {prefix, uri} ->
+            if uri == default_ns, do: prefix
+          end)
+          if found_prefix do
+            String.to_atom(found_prefix)
+          else
+            :""
+          end
+        else
+          :""
+        end
         %{ns: ns, name: name || ""}
       _ -> %{ns: :"", name: ""}
     end

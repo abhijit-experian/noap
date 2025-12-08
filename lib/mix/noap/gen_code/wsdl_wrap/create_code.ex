@@ -148,18 +148,21 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   defp get_nested_overrides(overrides, xml_name) do
     xml_name_str = to_string(xml_name)
 
-    try do
-      xml_name_atom = String.to_existing_atom(xml_name_str)
-
-      cond do
-        Map.has_key?(overrides, xml_name_str) -> overrides[xml_name_str]
-        Map.has_key?(overrides, xml_name_atom) -> overrides[xml_name_atom]
-        true -> %{}
+    # Try string key first (most common case)
+    if Map.has_key?(overrides, xml_name_str) do
+      overrides[xml_name_str]
+    else
+      # Try atom key if it exists
+      try do
+        xml_name_atom = String.to_existing_atom(xml_name_str)
+        if Map.has_key?(overrides, xml_name_atom) do
+          overrides[xml_name_atom]
+        else
+          %{}
+        end
+      rescue
+        ArgumentError -> %{}
       end
-    rescue
-      ArgumentError ->
-        # If atom doesn't exist, just try string key
-        overrides[xml_name_str] || %{}
     end
   end
 
@@ -218,8 +221,14 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
         %{field | type: child_complex_type}
 
       simple_type ->
-        # It's a simple type, convert to atom
-        %{field | type: simple_type}
+        # It's a simple type, but check for type override first
+        override_type = overrides[:type] || overrides["type"]
+        final_type = if override_type do
+          convert_field_type_value(override_type)
+        else
+          simple_type
+        end
+        %{field | type: final_type}
     end
   end
 
@@ -239,6 +248,16 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
     type = overrides[:type] || overrides["type"]
     convert_field_type(field, type)
   end
+
+  defp convert_field_type_value(type) when is_atom(type), do: type
+  defp convert_field_type_value(type) when is_binary(type) do
+    if String.starts_with?(type, ":") do
+      type |> String.slice(1..-1//1) |> String.to_atom()
+    else
+      String.to_atom(type)
+    end
+  end
+  defp convert_field_type_value(type), do: type
 
   defp convert_field_type(field, nil), do: field
   defp convert_field_type(field, type) when is_atom(type), do: %{field | type: type}

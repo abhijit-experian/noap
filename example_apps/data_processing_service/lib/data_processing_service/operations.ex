@@ -7,7 +7,7 @@ defmodule DataProcessingService.Operations do
 
   @schema_reqns %Noap.WSDL.Schema{
     wsdl: @wsdl,
-    schema_ns: "xsd",
+    schema_ns: "",
     target_namespace: "http://www.example.com/dataprocessing/request",
     target_ns: "reqns",
     action_tag_attributes: %{xmlns: "http://www.example.com/dataprocessing/request"}
@@ -15,7 +15,7 @@ defmodule DataProcessingService.Operations do
 
   @schema_resns %Noap.WSDL.Schema{
     wsdl: @wsdl,
-    schema_ns: "xsd",
+    schema_ns: "",
     target_namespace: "http://www.example.com/dataprocessing/response",
     target_ns: "resns",
     action_tag_attributes: %{xmlns: "http://www.example.com/dataprocessing/response"}

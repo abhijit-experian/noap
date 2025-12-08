@@ -36,7 +36,70 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       raise "Not sure how to handle with no targetNamespace: #{inspect(schema_element)}"
     end
 
-    target_ns = Noap.XMLUtil.find_namespace(schema_element, target_namespace) |> String.to_atom()
+    # Try to find namespace prefix that maps to target_namespace
+    # First check namespace_map (extracted from root element and schema elements)
+    # namespace_map keys are strings, values are URIs
+    found_prefix = Enum.find_value(namespace_map, fn {prefix, uri} ->
+      if uri == target_namespace, do: prefix
+    end)
+
+    # If not found in namespace_map, try to find in schema element itself
+    found_prefix = found_prefix || Enum.find_value(["reqns", "resns", "tns", "ns0", "ns1", "ns2", "ns3", "ns4"], fn prefix ->
+      case Meeseeks.attr(schema_element, "xmlns:#{prefix}") do
+        uri when uri == target_namespace -> prefix
+        _ -> nil
+      end
+    end) || Noap.XMLUtil.find_namespace(schema_element, target_namespace)
+
+    # If we couldn't find it, try to determine from schema_module configuration
+    target_ns = cond do
+      found_prefix != nil and found_prefix != "" and found_prefix != :"" ->
+        # found_prefix is a string, convert to atom
+        String.to_atom(found_prefix)
+      true ->
+        # Use schema_module config to find target_ns by matching target_namespace URI
+        case options[:schema_module] do
+          list when is_list(list) ->
+            # For each schema_module entry, check if its namespace URI matches target_namespace
+            # First try exact match via namespace_map
+            result = Enum.find_value(list, fn
+              {ns, _module} when is_atom(ns) ->
+                ns_string = Atom.to_string(ns)
+                # Check if namespace_map has this prefix and if its URI matches target_namespace
+                case Map.get(namespace_map, ns_string) do
+                  uri when uri == target_namespace -> ns
+                  _ -> nil
+                end
+              _ ->
+                nil
+            end)
+
+            result ||
+            # Fallback: try pattern matching based on common patterns
+            # Check if target_namespace URI contains keywords that match schema_module entries
+            Enum.find_value(list, fn
+              {ns, _module} when is_atom(ns) ->
+                ns_string = Atom.to_string(ns)
+                target_lower = String.downcase(target_namespace)
+                # Map common namespace prefixes to keywords they might contain
+                keyword_map = %{
+                  "reqns" => "request",
+                  "resns" => "response"
+                }
+                keyword = Map.get(keyword_map, ns_string, ns_string)
+                # Check if target_namespace contains the keyword
+                if String.contains?(target_lower, keyword) do
+                  ns
+                else
+                  nil
+                end
+              _ ->
+                nil
+            end) || :""
+          _ ->
+            :""
+        end
+    end
 
     module =
       Options.schema_module(options, target_ns) ||

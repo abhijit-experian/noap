@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <definitions targetNamespace="http://www.example.com/dataprocessing" xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:reqns="http://www.example.com/dataprocessing/request" xmlns:resns="http://www.example.com/dataprocessing/response" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://www.example.com/dataprocessing" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
    <types>
-      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/request" xmlns:tns="http://www.example.com/dataprocessing/request" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/request" xmlns:tns="http://www.example.com/dataprocessing/request" xmlns:reqns="http://www.example.com/dataprocessing/request" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
          <xsd:complexType name="ProcessingRequest">
             <xsd:sequence>
                <xsd:element name="RequestId" type="xsd:string" nillable="false">
@@ -761,7 +761,7 @@
          <xsd:element name="ProcessData" type="tns:ProcessingRequest" nillable="false"/>
       </xsd:schema>
       
-      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/response" xmlns:tns="http://www.example.com/dataprocessing/response" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/response" xmlns:tns="http://www.example.com/dataprocessing/response" xmlns:resns="http://www.example.com/dataprocessing/response" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
          <xsd:complexType name="ProcessingResponse">
             <xsd:sequence>
                <xsd:element name="ResponseId" type="xsd:string" nillable="false">
