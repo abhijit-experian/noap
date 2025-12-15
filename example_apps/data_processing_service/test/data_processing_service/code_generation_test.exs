@@ -79,6 +79,24 @@ defmodule DataProcessingService.CodeGenerationTest do
     "violations"
   ]
 
+  @request_program_interface_modules [
+    "program_interface/account_details",
+    "program_interface/account_details/account_detail",
+    "program_interface/account_details/account_detail/reason_code_details",
+    "program_interface/consumer_info",
+    "program_interface/consumer_info/name",
+    "program_interface/consumer_info/current_address",
+    "program_interface/consumer_info/previous_address"
+  ]
+
+  @response_program_interface_modules [
+    "program_interface/data_processing_response",
+    "program_interface/data_processing_response/consumer_info",
+    "program_interface/data_processing_response/consumer_info/name",
+    "program_interface/data_processing_response/consumer_info/current_address",
+    "program_interface/data_processing_response/consumer_info/previous_address"
+  ]
+
   @request_path "lib/data_processing_service/soap/request"
   @response_path "lib/data_processing_service/soap/response"
   @operations_path "lib/data_processing_service/operations.ex"
@@ -112,6 +130,46 @@ defmodule DataProcessingService.CodeGenerationTest do
 
       assert Enum.empty?(missing),
              "Missing generated response modules: #{inspect(missing)}. Expected #{length(@response_modules)} modules."
+    end
+
+    test "all expected program_interface request modules are generated" do
+      # Check parent level program_interface.ex
+      parent_file = Path.join([@request_path, "program_interface.ex"])
+      assert File.exists?(parent_file),
+             "Missing program_interface.ex at parent level"
+
+      missing =
+        Enum.reduce(@request_program_interface_modules, [], fn module, acc ->
+          file = Path.join([@request_path, "#{module}.ex"])
+          if File.exists?(file) do
+            acc
+          else
+            [module | acc]
+          end
+        end)
+
+      assert Enum.empty?(missing),
+             "Missing generated program_interface request modules: #{inspect(missing)}. Expected #{length(@request_program_interface_modules)} modules."
+    end
+
+    test "all expected program_interface response modules are generated" do
+      # Check parent level program_interface.ex
+      parent_file = Path.join([@response_path, "program_interface.ex"])
+      assert File.exists?(parent_file),
+             "Missing program_interface.ex at parent level"
+
+      missing =
+        Enum.reduce(@response_program_interface_modules, [], fn module, acc ->
+          file = Path.join([@response_path, "#{module}.ex"])
+          if File.exists?(file) do
+            acc
+          else
+            [module | acc]
+          end
+        end)
+
+      assert Enum.empty?(missing),
+             "Missing generated program_interface response modules: #{inspect(missing)}. Expected #{length(@response_program_interface_modules)} modules."
     end
   end
 
@@ -162,6 +220,26 @@ defmodule DataProcessingService.CodeGenerationTest do
         assert content =~ "defmodule DataProcessingService.Soap.Response.ProcessingResponse",
                "Response modules should use DataProcessingService.Soap.Response namespace"
       end
+    end
+
+    test "generated program_interface modules use Noap.XMLSchema" do
+      check_xml_schema(Path.join([@request_path, "program_interface.ex"]))
+      check_xml_schema(Path.join([@response_path, "program_interface.ex"]))
+
+      Enum.each(@request_program_interface_modules, fn module ->
+        check_xml_schema(Path.join([@request_path, "#{module}.ex"]))
+      end)
+
+      Enum.each(@response_program_interface_modules, fn module ->
+        check_xml_schema(Path.join([@response_path, "#{module}.ex"]))
+      end)
+    end
+
+    test "generated program_interface modules have correct module names" do
+      check_module_name(Path.join([@request_path, "program_interface.ex"]),
+                       "DataProcessingService.Soap.Request.ProgramInterface")
+      check_module_name(Path.join([@response_path, "program_interface.ex"]),
+                       "DataProcessingService.Soap.Response.ProgramInterface")
     end
   end
 
@@ -225,6 +303,21 @@ defmodule DataProcessingService.CodeGenerationTest do
       assert content =~ "embeds_one" || content =~ "embeds_many",
              "Response module processing_response.ex should use embeds_one or embeds_many for nested structures"
     end
+
+    test "program_interface modules use embeds for nested structures" do
+      files = [
+        Path.join([@request_path, "program_interface/consumer_info.ex"]),
+        Path.join([@response_path, "program_interface/data_processing_response.ex"])
+      ]
+
+      Enum.each(files, fn file ->
+        if File.exists?(file) do
+          content = File.read!(file)
+          assert content =~ "embeds_one" || content =~ "embeds_many",
+                 "#{file} should use embeds_one or embeds_many for nested structures"
+        end
+      end)
+    end
   end
 
   describe "array structures" do
@@ -252,6 +345,10 @@ defmodule DataProcessingService.CodeGenerationTest do
       key_files = [
         Path.join([@request_path, "processing_request.ex"]),
         Path.join([@response_path, "processing_response.ex"]),
+        Path.join([@request_path, "program_interface.ex"]),
+        Path.join([@request_path, "program_interface/consumer_info.ex"]),
+        Path.join([@response_path, "program_interface.ex"]),
+        Path.join([@response_path, "program_interface/data_processing_response.ex"]),
         @operations_path
       ]
 
@@ -272,6 +369,23 @@ defmodule DataProcessingService.CodeGenerationTest do
              "Operations should reference DataProcessingService.Soap.Request.ProcessingRequest"
       assert content =~ "DataProcessingService.Soap.Response.ProcessingResponse",
              "Operations should reference DataProcessingService.Soap.Response.ProcessingResponse"
+    end
+  end
+
+  # Helper functions
+  defp check_xml_schema(file) do
+    if File.exists?(file) do
+      content = File.read!(file)
+      assert content =~ "use Noap.XMLSchema", "#{file} should use Noap.XMLSchema"
+      assert content =~ "xml_schema do", "#{file} should have xml_schema block"
+    end
+  end
+
+  defp check_module_name(file, expected_module) do
+    if File.exists?(file) do
+      content = File.read!(file)
+      assert content =~ "defmodule #{expected_module}",
+             "#{file} should define #{expected_module}"
     end
   end
 end

@@ -105,17 +105,30 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       Options.schema_module(options, target_ns) ||
         Util.convert_url_to_module(target_namespace, parent_module)
 
-    top_type_elements =
-      schema_element
-      |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='element']"))
+    # Only get direct child elements of the schema, not nested elements
+    # SweetXml's ~x"xsd:element"l only gets direct children.
+    # Meeseeks ./element gets ALL descendant elements, not just direct children!
+    # Since Meeseeks doesn't support parent::* axis well, we need a workaround
+    # Get all elements and filter by checking if schema_element is in their ancestor path
+    all_elements = Meeseeks.all(schema_element, xpath(".//element"))
 
-    # Fallback: if namespace-uri() didn't work, try simple query
-    top_type_elements = if Enum.empty?(top_type_elements) do
-      schema_element
-      |> Meeseeks.all(xpath(".//element"))
-    else
-      top_type_elements
-    end
+    # Filter to only direct children: an element is a direct child if schema_element
+    # is its immediate parent. We check this by getting ancestors and seeing if schema is the first one
+    top_type_elements =
+      all_elements
+      |> Enum.filter(fn element ->
+        # Get all ancestor elements (not just any node)
+        ancestors = Meeseeks.all(element, xpath("ancestor::*"))
+        # For a direct child, schema_element should be the last ancestor (closest parent)
+        case ancestors do
+          [] -> false
+          ancestor_list ->
+            # Check if schema_element is the immediate parent (last in ancestor list)
+            List.last(ancestor_list) == schema_element
+        end
+      end)
+
+    Logger.debug("Found #{length(top_type_elements)} top-level elements: #{Enum.map(top_type_elements, fn e -> Meeseeks.attr(e, "name") || "unnamed" end) |> Enum.join(", ")}")
 
       top_types =
       top_type_elements
@@ -139,16 +152,24 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
       complex_type_map: nil
     }
 
+    # Only get direct child named complexTypes of the schema, not nested ones
+    # Named complexTypes are always top-level in XSD, so we can get all of them
+    # and filter to only those with names (inline types don't have names)
     complex_type_elements = schema_element
-    |> Meeseeks.all(xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']"))
+    |> Meeseeks.all(xpath("./*[namespace-uri()='#{@schema_namespace}' and local-name()='complexType']"))
 
     # Fallback: if namespace-uri() didn't work, try simple query
     complex_type_elements = if Enum.empty?(complex_type_elements) do
       schema_element
-      |> Meeseeks.all(xpath(".//complexType"))
+      |> Meeseeks.all(xpath("./complexType"))
     else
       complex_type_elements
     end
+    |> Enum.filter(fn element ->
+      # Skip complexTypes without names (inline types)
+      name = Meeseeks.attr(element, "name")
+      name != nil && name != ""
+    end)
 
     complex_type_map =
       complex_type_elements
@@ -165,7 +186,10 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
     complex_type_map =
       top_type_elements
       |> Enum.map(&parse_type(schema, &1, nil))
-      |> Enum.reduce(complex_type_map, &add_to_complex_type_map/2)
+      |> Enum.reduce(complex_type_map, fn result, map ->
+        Logger.debug("Processing result from top_type_element: #{inspect(result)}")
+        add_to_complex_type_map(result, map, schema.module)
+      end)
 
     complex_type_map =
       complex_type_map
@@ -204,11 +228,26 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
     end
   end
 
-  defp add_to_complex_type_map(complex_type = %ComplexType{}, map) do
-    Map.put(map, complex_type.name, complex_type)
+  defp add_to_complex_type_map(complex_type = %ComplexType{parent_module: parent_module}, map, schema_module) do
+    # Only add top-level types to the map. Nested types have a parent_module that extends
+    # beyond the schema.module (e.g., "Schema.Module.Parent.Child" vs "Schema.Module").
+    # We determine nesting from the XML structure during parsing, which sets the parent_module
+    # correctly. Top-level types have parent_module = schema.module.
+    parent_module_str = to_string(parent_module)
+    schema_module_str = to_string(schema_module)
+
+    # If parent_module equals schema.module, it's top-level. Otherwise, it's nested.
+    if parent_module_str == schema_module_str do
+      Logger.debug("Adding top-level type #{complex_type.name} with parent_module=#{parent_module_str}")
+      Map.put(map, complex_type.name, complex_type)
+    else
+      # This is a nested type, don't add it to the top-level map
+      Logger.debug("Skipping nested type #{complex_type.name} with parent_module=#{parent_module_str} (schema.module=#{schema_module_str})")
+      map
+    end
   end
 
-  defp add_to_complex_type_map(complex_type_name, map) when is_binary(complex_type_name) do
+  defp add_to_complex_type_map(complex_type_name, map, _schema_module) when is_binary(complex_type_name) do
     # Should already exist or will be created later
     map
   end

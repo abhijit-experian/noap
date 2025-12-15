@@ -146,24 +146,8 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
   end
 
   defp get_nested_overrides(overrides, xml_name) do
-    xml_name_str = to_string(xml_name)
-
-    # Try string key first (most common case)
-    if Map.has_key?(overrides, xml_name_str) do
-      overrides[xml_name_str]
-    else
-      # Try atom key if it exists
-      try do
-        xml_name_atom = String.to_existing_atom(xml_name_str)
-        if Map.has_key?(overrides, xml_name_atom) do
-          overrides[xml_name_atom]
-        else
-          %{}
-        end
-      rescue
-        ArgumentError -> %{}
-      end
-    end
+    xml_name = to_string(xml_name)
+    overrides[xml_name] || %{}
   end
 
   defp create_complex_type_code(
@@ -196,7 +180,7 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
          overrides
        )
        when is_binary(child_complex_type_name) do
-    # Check if it's a simple type name that should be an atom
+    # Check if it's a simple type name that should be converted to atom
     simple_type_map = %{
       "boolean" => :boolean,
       "date" => :date,
@@ -213,22 +197,19 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
       nil ->
         # It's a complex type name
         child_complex_type = complex_type_map[child_complex_type_name]
+
         if is_nil(child_complex_type) do
           raise "Not sure how to decipher complex_type=#{child_complex_type_name}"
         end
+
         child_complex_type =
           process_complex_type_overrides(child_complex_type, complex_type_map, type_map, overrides)
+
         %{field | type: child_complex_type}
 
       simple_type ->
-        # It's a simple type, but check for type override first
-        override_type = overrides[:type] || overrides["type"]
-        final_type = if override_type do
-          convert_field_type_value(override_type)
-        else
-          simple_type
-        end
-        %{field | type: final_type}
+        # It's a simple type, convert to atom
+        %{field | type: simple_type}
     end
   end
 
@@ -249,16 +230,6 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
     convert_field_type(field, type)
   end
 
-  defp convert_field_type_value(type) when is_atom(type), do: type
-  defp convert_field_type_value(type) when is_binary(type) do
-    if String.starts_with?(type, ":") do
-      type |> String.slice(1..-1//1) |> String.to_atom()
-    else
-      String.to_atom(type)
-    end
-  end
-  defp convert_field_type_value(type), do: type
-
   defp convert_field_type(field, nil), do: field
   defp convert_field_type(field, type) when is_atom(type), do: %{field | type: type}
 
@@ -270,4 +241,5 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
       raise "Not sure what to do with type=#{type}"
     end
   end
+
 end
