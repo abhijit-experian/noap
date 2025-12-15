@@ -50,4 +50,75 @@ defmodule CountryInfoService.OperationsTest do
       end)
     end
   end
+
+  describe "all files and directories validation" do
+    @modules_path "lib/country_info_service/oorsprong"
+    @all_files [
+      "array_oft_continent.ex",
+      "array_oft_country_code_and_name.ex",
+      "array_oft_country_code_and_name_grouped_by_continent.ex",
+      "array_oft_country_info.ex",
+      "array_oft_currency.ex",
+      "array_oft_language.ex",
+      "capital_city.ex",
+      "capital_city_response.ex",
+      "countries_using_currency.ex",
+      "countries_using_currency_response.ex",
+      "country_currency.ex",
+      "country_currency_response.ex",
+      "country_flag.ex",
+      "country_flag_response.ex",
+      "country_int_phone_code.ex",
+      "country_int_phone_code_response.ex",
+      "country_iso_code.ex",
+      "country_iso_code_response.ex",
+      "country_name.ex",
+      "country_name_response.ex",
+      "currency_name.ex",
+      "currency_name_response.ex",
+      "full_country_info.ex",
+      "full_country_info_all_countries.ex",
+      "full_country_info_all_countries_response.ex",
+      "full_country_info_response.ex",
+      "language_iso_code.ex",
+      "language_iso_code_response.ex",
+      "language_name.ex",
+      "language_name_response.ex",
+      "list_of_continents_by_code.ex",
+      "list_of_continents_by_code_response.ex",
+      "list_of_continents_by_name.ex",
+      "list_of_continents_by_name_response.ex",
+      "list_of_country_names_by_code.ex",
+      "list_of_country_names_by_code_response.ex",
+      "list_of_country_names_by_name.ex",
+      "list_of_country_names_by_name_response.ex",
+      "list_of_country_names_grouped_by_continent.ex",
+      "list_of_country_names_grouped_by_continent_response.ex",
+      "list_of_currencies_by_code.ex",
+      "list_of_currencies_by_code_response.ex",
+      "list_of_currencies_by_name.ex",
+      "list_of_currencies_by_name_response.ex",
+      "list_of_languages_by_code.ex",
+      "list_of_languages_by_code_response.ex",
+      "list_of_languages_by_name.ex",
+      "list_of_languages_by_name_response.ex",
+      "t_continent.ex",
+      "t_country_code_and_name.ex",
+      "t_country_code_and_name_grouped_by_continent.ex",
+      "t_country_info.ex",
+      "t_currency.ex",
+      "t_language.ex"
+    ]
+
+    test "all files exist exactly once" do
+      Enum.each(@all_files, fn file ->
+        path = Path.join([@modules_path, file])
+        assert File.exists?(path), "Missing file: #{path}"
+      end)
+
+      # Check file count in oorsprong directory
+      oorsprong_files = @modules_path |> Path.expand() |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".ex"))
+      assert length(oorsprong_files) == 54, "Expected 54 files in oorsprong directory, found #{length(oorsprong_files)}"
+    end
+  end
 end

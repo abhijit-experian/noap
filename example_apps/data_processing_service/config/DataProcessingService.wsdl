@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
-<definitions targetNamespace="http://www.example.com/dataprocessing" xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:reqns="http://www.example.com/dataprocessing/request" xmlns:resns="http://www.example.com/dataprocessing/response" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://www.example.com/dataprocessing" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<definitions targetNamespace="http://www.example.com/dataprocessing" xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:reqns="http://www.example.com/dataprocessing/soap/request" xmlns:resns="http://www.example.com/dataprocessing/soap/response" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://www.example.com/dataprocessing" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
    <types>
-      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/request" xmlns:tns="http://www.example.com/dataprocessing/request" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/soap/request" xmlns:tns="http://www.example.com/dataprocessing/soap/request" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
          <xsd:complexType name="ProcessingRequest">
             <xsd:sequence>
                <xsd:element name="RequestId" type="xsd:string" nillable="false">
@@ -758,10 +758,269 @@
             </xsd:sequence>
          </xsd:complexType>
          
+         <xsd:complexType name="ProgramInterface">
+            <xsd:sequence>
+               <xsd:element name="ConsumerInfo" nillable="false">
+                  <xsd:complexType>
+                     <xsd:sequence>
+                        <xsd:element name="Identifier" type="xsd:string" nillable="false">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="50"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="Name" nillable="false">
+                           <xsd:complexType>
+                              <xsd:sequence>
+                                 <xsd:element name="LastName" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="FirstName" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="MiddleInitial" type="xsd:string" nillable="true">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                              </xsd:sequence>
+                           </xsd:complexType>
+                        </xsd:element>
+                        <xsd:element name="CurrentAddress" nillable="false">
+                           <xsd:complexType>
+                              <xsd:sequence>
+                                 <xsd:element name="StreetAddress" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="100"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="City" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="State" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="PostalCode" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                              </xsd:sequence>
+                           </xsd:complexType>
+                        </xsd:element>
+                        <xsd:element name="PreviousAddress" nillable="true">
+                           <xsd:complexType>
+                              <xsd:sequence>
+                                 <xsd:element name="StreetAddress" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="100"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="City" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="State" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="PostalCode" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                              </xsd:sequence>
+                           </xsd:complexType>
+                        </xsd:element>
+                        <xsd:element name="PhoneNumber" type="xsd:string" nillable="true">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="20"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="EmailAddress" type="xsd:string" nillable="true">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="100"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="YearsAtAddress" type="xsd:integer" nillable="true"/>
+                        <xsd:element name="MonthsAtAddress" type="xsd:integer" nillable="true"/>
+                     </xsd:sequence>
+                  </xsd:complexType>
+               </xsd:element>
+               <xsd:element name="AccountDetails" nillable="false">
+                  <xsd:complexType>
+                     <xsd:sequence>
+                        <xsd:element name="AccountDetailMessage" type="xsd:string" nillable="false">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="100"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="AccountDetail" nillable="false" minOccurs="0" maxOccurs="unbounded">
+                           <xsd:complexType>
+                              <xsd:sequence>
+                                 <xsd:element name="InstitutionCode" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="20"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="AccountNumber" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="AccountDate" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="ReasonCodeDetails" nillable="false" minOccurs="0" maxOccurs="unbounded">
+                                    <xsd:complexType>
+                                       <xsd:sequence>
+                                          <xsd:element name="ReasonCode" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="ReasonDescription" type="xsd:string" nillable="true">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="200"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                       </xsd:sequence>
+                                    </xsd:complexType>
+                                 </xsd:element>
+                                 <xsd:element name="InstitutionName" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="100"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="InstitutionState" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="InstitutionPostalCode" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="Amount" type="xsd:double" nillable="true"/>
+                                 <xsd:element name="PaymentDate" type="xsd:string" nillable="true">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="10"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="Description" type="xsd:string" nillable="true">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="500"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="Status" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="20"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="StatementFlag" type="xsd:boolean" nillable="true"/>
+                              </xsd:sequence>
+                           </xsd:complexType>
+                        </xsd:element>
+                     </xsd:sequence>
+                  </xsd:complexType>
+               </xsd:element>
+            </xsd:sequence>
+         </xsd:complexType>
+         
          <xsd:element name="ProcessData" type="tns:ProcessingRequest" nillable="false"/>
       </xsd:schema>
       
-      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/response" xmlns:tns="http://www.example.com/dataprocessing/response" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:schema attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.example.com/dataprocessing/soap/response" xmlns:tns="http://www.example.com/dataprocessing/soap/response" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
          <xsd:complexType name="ProcessingResponse">
             <xsd:sequence>
                <xsd:element name="ResponseId" type="xsd:string" nillable="false">
@@ -1467,6 +1726,179 @@
                         <xsd:whiteSpace value="collapse"/>
                      </xsd:restriction>
                   </xsd:simpleType>
+               </xsd:element>
+            </xsd:sequence>
+         </xsd:complexType>
+         
+         <xsd:complexType name="ProgramInterface">
+            <xsd:sequence>
+               <xsd:element name="DataProcessingResponse" nillable="false">
+                  <xsd:complexType>
+                     <xsd:sequence>
+                        <xsd:element name="ResponseId" type="xsd:string" nillable="false">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="50"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="ResponseType" type="xsd:string" nillable="false">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="20"/>
+                                 <xsd:whiteSpace value="collapse"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="ResponseData" type="xsd:string" nillable="true">
+                           <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                 <xsd:maxLength value="1000"/>
+                                 <xsd:whiteSpace value="preserve"/>
+                              </xsd:restriction>
+                           </xsd:simpleType>
+                        </xsd:element>
+                        <xsd:element name="ConsumerInfo" nillable="false">
+                           <xsd:complexType>
+                              <xsd:sequence>
+                                 <xsd:element name="Identifier" type="xsd:string" nillable="false">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="50"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="Name" nillable="false">
+                                    <xsd:complexType>
+                                       <xsd:sequence>
+                                          <xsd:element name="LastName" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="50"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="FirstName" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="50"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="MiddleInitial" type="xsd:string" nillable="true">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                       </xsd:sequence>
+                                    </xsd:complexType>
+                                 </xsd:element>
+                                 <xsd:element name="CurrentAddress" nillable="false">
+                                    <xsd:complexType>
+                                       <xsd:sequence>
+                                          <xsd:element name="StreetAddress" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="100"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="City" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="50"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="State" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="PostalCode" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                       </xsd:sequence>
+                                    </xsd:complexType>
+                                 </xsd:element>
+                                 <xsd:element name="PreviousAddress" nillable="true">
+                                    <xsd:complexType>
+                                       <xsd:sequence>
+                                          <xsd:element name="StreetAddress" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="100"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="City" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="50"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="State" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                          <xsd:element name="PostalCode" type="xsd:string" nillable="false">
+                                             <xsd:simpleType>
+                                                <xsd:restriction base="xsd:string">
+                                                   <xsd:maxLength value="10"/>
+                                                   <xsd:whiteSpace value="collapse"/>
+                                                </xsd:restriction>
+                                             </xsd:simpleType>
+                                          </xsd:element>
+                                       </xsd:sequence>
+                                    </xsd:complexType>
+                                 </xsd:element>
+                                 <xsd:element name="PhoneNumber" type="xsd:string" nillable="true">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="20"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="EmailAddress" type="xsd:string" nillable="true">
+                                    <xsd:simpleType>
+                                       <xsd:restriction base="xsd:string">
+                                          <xsd:maxLength value="100"/>
+                                          <xsd:whiteSpace value="collapse"/>
+                                       </xsd:restriction>
+                                    </xsd:simpleType>
+                                 </xsd:element>
+                                 <xsd:element name="YearsAtAddress" type="xsd:integer" nillable="true"/>
+                                 <xsd:element name="MonthsAtAddress" type="xsd:integer" nillable="true"/>
+                              </xsd:sequence>
+                           </xsd:complexType>
+                        </xsd:element>
+                     </xsd:sequence>
+                  </xsd:complexType>
                </xsd:element>
             </xsd:sequence>
          </xsd:complexType>
