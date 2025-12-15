@@ -106,15 +106,29 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
         Util.convert_url_to_module(target_namespace, parent_module)
 
     # Only get direct child elements of the schema, not nested elements
-    # SweetXml's ~x"xsd:element"l only gets direct children.
-    # Meeseeks ./element gets ALL descendant elements, not just direct children!
-    # Since Meeseeks doesn't support parent::* axis well, we need a workaround
-    # Get all elements and filter by checking if schema_element is in their ancestor path
-    all_elements = Meeseeks.all(schema_element, xpath(".//element"))
+    # Try to get direct children first using ./ which gets only immediate children
+    top_type_elements = Meeseeks.all(schema_element, xpath("./*[namespace-uri()='#{@schema_namespace}' and local-name()='element']"))
 
-    # Filter to only direct children: an element is a direct child if schema_element
-    # is its immediate parent. We check this by getting ancestors and seeing if schema is the first one
-    top_type_elements =
+    # Fallback: if namespace-uri() didn't work, try simple query for direct children
+    top_type_elements = if Enum.empty?(top_type_elements) do
+      Meeseeks.all(schema_element, xpath("./element"))
+    else
+      top_type_elements
+    end
+
+    # If still empty, fall back to the ancestor filtering approach
+    top_type_elements = if Enum.empty?(top_type_elements) do
+      all_elements = Meeseeks.all(schema_element, xpath(".//*[namespace-uri()='#{@schema_namespace}' and local-name()='element']"))
+
+      # Fallback: if namespace-uri() didn't work, try simple query
+      all_elements = if Enum.empty?(all_elements) do
+        Meeseeks.all(schema_element, xpath(".//element"))
+      else
+        all_elements
+      end
+
+      # Filter to only direct children: an element is a direct child if schema_element
+      # is its immediate parent. We check this by getting ancestors and seeing if schema is the first one
       all_elements
       |> Enum.filter(fn element ->
         # Get all ancestor elements (not just any node)
@@ -127,6 +141,9 @@ defmodule Mix.Noap.GenCode.WSDLWrap.SchemaWrap do
             List.last(ancestor_list) == schema_element
         end
       end)
+    else
+      top_type_elements
+    end
 
     Logger.debug("Found #{length(top_type_elements)} top-level elements: #{Enum.map(top_type_elements, fn e -> Meeseeks.attr(e, "name") || "unnamed" end) |> Enum.join(", ")}")
 

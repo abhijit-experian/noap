@@ -60,11 +60,26 @@ defmodule Mix.Noap.GenCode.WSDLWrap.CreateCode do
     )
     |> Template.save!(module_dir, "operations")
 
+    # Construct the root module file path
+    # For CountryInfoService -> lib/country_info_service.ex
+    # For CountryInfoService.Oorsprong -> lib/country_info_service/oorsprong.ex
+    root_module_parts = wsdl_wrap.module_prefix |> String.split(".")
+    root_module_name = root_module_parts |> List.first() |> Util.underscore()
+    root_module_dir = Path.join([lib_dir, root_module_name])
+
+    delegate_file_path = if length(root_module_parts) == 1 do
+      # Single-level module: save to lib/country_info_service.ex
+      "#{root_module_dir}.ex"
+    else
+      # Multi-level module: save to lib/country_info_service/oorsprong.ex
+      "#{module_dir}.ex"
+    end
+
     Template.create_delegate(
       wsdl_wrap,
       operation_delegates
     )
-    |> Template.save!("#{module_dir}.ex")
+    |> Template.save!(delegate_file_path)
   end
 
   defp process_complex_type_overrides(complex_type, complex_type_map, type_map, overrides) do
