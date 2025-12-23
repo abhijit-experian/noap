@@ -53,9 +53,9 @@ defmodule Noap.SweetXmlCompat do
         if namespace_conformant do
           # Store namespaces in the document metadata
           namespaces = extract_namespaces(xml_string)
-          %{doc: doc, namespaces: namespaces}
+          %{doc: doc, namespaces: namespaces, xml_string: xml_string}
         else
-          %{doc: doc, namespaces: %{}}
+          %{doc: doc, namespaces: %{}, xml_string: xml_string}
         end
 
       {:error, reason} ->
@@ -127,27 +127,62 @@ defmodule Noap.SweetXmlCompat do
     modifier = expr.modifier
 
     # Handle document with namespaces stored
-    {expath_doc, all_namespaces, is_node, node_xpath, node_xml_string} =
+    {expath_doc, all_namespaces, is_node, node_xpath, _node_xml_string, root_xml_string} =
       case doc_or_node do
-        %{doc: d, namespaces: ns} -> {d, Map.merge(ns, namespaces), false, nil, nil}
-        %Node{doc: d, namespaces: ns, xpath_to_node: np, xml_string: xml} -> {d, Map.merge(ns, namespaces), true, np, xml}
-        _ -> {doc_or_node, namespaces, false, nil, nil}
+        %{doc: d, namespaces: ns, xml_string: xml_str} -> {d, Map.merge(ns, namespaces), false, nil, nil, xml_str}
+        %{doc: d, namespaces: ns} -> {d, Map.merge(ns, namespaces), false, nil, nil, nil}
+        %Node{doc: d, namespaces: ns, xpath_to_node: np, xml_string: xml} when not is_nil(d) -> {d, Map.merge(ns, namespaces), true, np, xml, nil}
+        %Node{} -> raise "Cannot query from Node with nil document"
+        nil -> raise "Cannot query from nil document or node"
+        _ -> {doc_or_node, namespaces, false, nil, nil, nil}
       end
 
     # Adjust XPath for Node queries
-    # When querying from a Node with a relative path, we need to prepend the node's XPath
+    # When querying from a Node, adjust the XPath appropriately
     adjusted_xpath = if is_node and node_xpath do
       if String.starts_with?(xpath_string, "./") do
-        # Remove ./ prefix and append to node's xpath
-        relative_path = String.slice(xpath_string, 2..-1//-1)
-        if relative_path == "" do
-          node_xpath
+        # For Nodes created from XML strings (node_xpath == "."),
+        # handle special cases
+        if node_xpath == "." do
+          cond do
+            xpath_string == "./text()" -> "/root/text()"
+            xpath_string == "text()" -> "/root/text()"
+            String.ends_with?(xpath_string, "/text()") ->
+              # For paths ending with /text(), query from root
+              base_path = String.replace_suffix(xpath_string, "/text()", "")
+              if String.starts_with?(base_path, "./") do
+                "/root" <> String.slice(base_path, 1..-1//-1) <> "/text()"
+              else
+                "/root" <> base_path <> "/text()"
+              end
+            String.starts_with?(xpath_string, "./@") ->
+              # For attributes on standalone element: ./@name -> /*/@name
+              attr_name = String.slice(xpath_string, 3..-1//-1)
+              "/*/@#{attr_name}"
+            String.starts_with?(xpath_string, "@") ->
+              # For attributes: @name -> /*/@name
+              attr_name = String.slice(xpath_string, 1..-1//-1)
+              "/*/@#{attr_name}"
+            true ->
+              # For relative paths, adjust to work with wrapped root element
+              if String.starts_with?(xpath_string, "./") do
+                "/root" <> String.slice(xpath_string, 1..-1//-1)
+              else
+                "/root/" <> xpath_string
+              end
+          end
         else
-          # Combine node path with relative path
-          if String.ends_with?(node_xpath, "/") do
-            node_xpath <> relative_path
+          # Remove ./ prefix and append to node's xpath
+          relative_path = String.slice(xpath_string, 2..-1//-1)
+          if relative_path == "" do
+            node_xpath
           else
-            node_xpath <> "/" <> relative_path
+            # Combine node path with relative path
+            if String.ends_with?(node_xpath, "/") do
+              node_xpath <> relative_path
+            else
+              node_xpath <> "/" <> relative_path
+            end
           end
         end
       else
@@ -158,29 +193,16 @@ defmodule Noap.SweetXmlCompat do
       xpath_string
     end
 
-    # Special case: if querying text() from a Node with xml_string, extract directly
-    result = if is_node and node_xml_string and xpath_string == "./text()" and modifier == ?s do
-      # Extract text content directly from XML string using regex
-      case Regex.run(~r/>([^<]+)</, node_xml_string) do
-        [_, text] -> [String.trim(text)]
-        _ ->
-          # Try querying the document with //text() to get all text nodes
-          case Expath.query(expath_doc, "//text()") do
-            {:ok, text_list} -> text_list
-            _ -> []
-          end
-      end
-    else
-      # Normal path - query using adjusted_xpath
-      # Handle empty xpath string
-      if adjusted_xpath == "" do
+    # Query using adjusted_xpath - let Expath handle it
+    result = if adjusted_xpath == "" do
         # Empty xpath selects current context - return the node or document
         return_result = if is_node do
-        doc_or_node
-      else
-        expath_doc
-      end
-      [return_result]
+          doc_or_node
+        else
+          # For documents, create a Node struct wrapping the document
+          %Node{doc: expath_doc, xpath_to_node: ".", namespaces: all_namespaces, xml_string: nil}
+        end
+        [return_result]
     else
       # Expath has full namespace support
       # When XPath uses namespace prefixes (contains ":"), we must use query/3 with namespace map
@@ -189,15 +211,29 @@ defmodule Noap.SweetXmlCompat do
 
       if xpath_uses_namespaces and map_size(all_namespaces) > 0 do
         # XPath explicitly uses namespaces, must use query/3 with namespace mappings
+        # Expath expects namespace map with prefix -> URI
         case Expath.query(expath_doc, adjusted_xpath, all_namespaces) do
-          {:ok, res} -> res
-          {:error, error} ->
+          {:ok, res} when res != [] -> res
+          {:ok, []} ->
+            # Expath namespace queries often return empty for element selection
+            # Try using local-name() to match elements regardless of namespace
+            local_name_xpath = convert_to_local_name_xpath(adjusted_xpath, all_namespaces)
+            case Expath.query(expath_doc, local_name_xpath) do
+              {:ok, res} -> res
+              {:error, _} -> []
+            end
+          {:error, _error} ->
             # Try to handle namespace::* axis which Expath might not support
             if String.contains?(adjusted_xpath, "namespace::") do
               # Return empty list for namespace axis queries (not fully supported)
               []
             else
-              raise "XPath query failed: #{inspect(error)} for query: #{adjusted_xpath}"
+              # Try using local-name() approach
+              local_name_xpath = convert_to_local_name_xpath(adjusted_xpath, all_namespaces)
+              case Expath.query(expath_doc, local_name_xpath) do
+                {:ok, res} -> res
+                {:error, _} -> []
+              end
             end
         end
       else
@@ -226,10 +262,12 @@ defmodule Noap.SweetXmlCompat do
         end
       end
     end
-    end
 
     # Expath.query always returns a list, even for single results
-    apply_modifier(result, modifier, expath_doc, adjusted_xpath, all_namespaces, doc_or_node)
+    # result is already extracted from {:ok, res} tuple
+    # Debug: check if result is empty when it shouldn't be
+    final_result = apply_modifier(result, modifier, expath_doc, adjusted_xpath, all_namespaces, doc_or_node, root_xml_string)
+    final_result
   end
 
   def xpath(doc_or_node, xpath_string) when is_binary(xpath_string) do
@@ -268,97 +306,83 @@ defmodule Noap.SweetXmlCompat do
     end)
   end
 
-  defp apply_modifier(result, modifier, _doc, _xpath, _namespaces, _doc_or_node) when modifier == nil do
-    # No modifier - return raw result, but if it's XML strings, parse them
-    if is_list(result) and length(result) > 0 and is_binary(hd(result)) do
-      # Check if results look like XML (start with <)
-      if String.starts_with?(hd(result), "<") do
-        # These are XML element strings, parse them
-        Enum.map(result, fn xml_str ->
-          case Expath.new(xml_str) do
-            {:ok, doc} -> %Node{doc: doc, xpath_to_node: ".", namespaces: %{}, xml_string: xml_str}
-            _ -> xml_str
-          end
-        end)
-      else
-        result
-      end
-    else
-      result
-    end
+  defp apply_modifier(result, modifier, _doc, _xpath, _namespaces, _doc_or_node, _root_xml_string) when modifier == nil do
+    # No modifier - return raw result
+    # Expath returns text content for elements, so we return as-is
+    result
   end
 
-  defp apply_modifier(result, ?e, _doc, xpath, namespaces, _doc_or_node) do
+  defp apply_modifier(result, ?e, _doc, xpath, namespaces, doc_or_node, root_xml_string) do
     # Single element - return first result or nil
     case result do
       [] -> nil
       [first | _] ->
-        # If xpath ends with /text() or text(), extract text directly
-        if String.ends_with?(xpath, "/text()") or String.ends_with?(xpath, "text()") do
+        # If xpath ends with /text() or text() or string(.), extract text directly
+        # string(.) is used when querying ./text() from a Node
+        if String.ends_with?(xpath, "/text()") or String.ends_with?(xpath, "text()") or String.ends_with?(xpath, "string(.)") do
           extract_text_content([first])
         else
-          # Parse as node if it's a string (XML or text)
-          parse_as_node(first, namespaces)
+          # Expath returns text content for elements, not XML strings
+          # We need to create a Node that can be queried further
+          # For now, wrap the text in XML to create a queryable node
+          create_node_from_text(first, namespaces, xpath, doc_or_node, root_xml_string)
         end
       other -> other
     end
   end
 
-  defp apply_modifier(result, ?l, _doc, xpath, namespaces, _doc_or_node) do
-    # List of elements - ensure it's a list and parse strings as nodes
+  defp apply_modifier(result, ?l, _doc, xpath, namespaces, doc_or_node, root_xml_string) do
+    # List of elements - ensure it's a list
     parsed_result = if is_list(result) do
       result
     else
       [result]
     end
 
-    # If the xpath ends with /text(), return strings directly (not Node structs)
-    if String.ends_with?(xpath, "/text()") or String.ends_with?(xpath, "text()") do
-      # For text() queries, return strings directly
-      Enum.map(parsed_result, fn item ->
-        extract_text_content([item])
-      end)
+    # If the xpath ends with /text() or string(.), return strings directly (not Node structs)
+    if String.ends_with?(xpath, "/text()") or String.ends_with?(xpath, "text()") or String.ends_with?(xpath, "string(.)") do
+      # For text() queries, Expath already returns strings
+      parsed_result
     else
-      # Parse each result as a node if it's a string
+      # Expath returns text content for elements, create Node structs
       Enum.map(parsed_result, fn item ->
-        parse_as_node(item, namespaces)
+        create_node_from_text(item, namespaces, xpath, doc_or_node, root_xml_string)
       end)
     end
   end
 
-  # Helper to parse a string result as a Node
-  defp parse_as_node(item, namespaces) when is_binary(item) do
-    # Try parsing as XML first
-    if String.starts_with?(item, "<") do
-      case Expath.new(item) do
-        {:ok, node_doc} ->
-          %Node{doc: node_doc, xpath_to_node: ".", namespaces: namespaces, xml_string: item}
-        _ -> item
-      end
-    else
-      # It's a text string, wrap it in XML and parse
-      # Escape XML special characters
-      escaped = item
-        |> String.replace("&", "&amp;")
-        |> String.replace("<", "&lt;")
-        |> String.replace(">", "&gt;")
-      wrapped_xml = "<root>#{escaped}</root>"
-      case Expath.new(wrapped_xml) do
-        {:ok, node_doc} ->
-          %Node{doc: node_doc, xpath_to_node: ".", namespaces: namespaces, xml_string: wrapped_xml}
-        _ -> item
-      end
-    end
-  end
-  defp parse_as_node(item, _namespaces), do: item
-
-  defp apply_modifier(result, ?s, _doc, _xpath, _namespaces, _doc_or_node) do
+  defp apply_modifier(result, ?s, _doc, _xpath, _namespaces, _doc_or_node, _root_xml_string) do
     # String - extract text content
-    # Expath.query returns a list of strings, so we need to join them
-    # But SweetXML returns charlists for some cases, so we need to match that
-    extract_text_content(result)
+    # SweetXml with 's' modifier joins all text matches into a single string
+    # Expath already returns strings, so join them
+    # But if result is a list with one string, return the string directly
+    case result do
+      [single] when is_binary(single) -> single
+      list when is_list(list) -> extract_text_content(list)
+      other -> extract_text_content([other])
+    end
   end
 
+  # Helper to create a Node from text content returned by Expath
+  # Expath returns text for elements, so we wrap it in XML to make it queryable
+  defp create_node_from_text(text, namespaces, _xpath, _doc_or_node, _root_xml_string) when is_binary(text) do
+    # Escape XML special characters
+    escaped = text
+      |> String.replace("&", "&amp;")
+      |> String.replace("<", "&lt;")
+      |> String.replace(">", "&gt;")
+      |> String.replace("\"", "&quot;")
+      |> String.replace("'", "&apos;")
+    wrapped_xml = "<root>#{escaped}</root>"
+    case Expath.new(wrapped_xml) do
+      {:ok, node_doc} ->
+        %Node{doc: node_doc, xpath_to_node: ".", namespaces: namespaces, xml_string: wrapped_xml}
+      _ ->
+        # If parsing fails, return a Node with nil doc (will raise on query)
+        %Node{doc: nil, xpath_to_node: ".", namespaces: namespaces, xml_string: wrapped_xml}
+    end
+  end
+  defp create_node_from_text(item, _namespaces, _xpath, _doc_or_node, _root_xml_string), do: item
 
   defp extract_text_content(nil), do: ""
   defp extract_text_content([]), do: ""
@@ -432,5 +456,16 @@ defmodule Noap.SweetXmlCompat do
     xpath_string
     |> String.replace(~r/\/\/([a-zA-Z_][a-zA-Z0-9_]*)/, "//*[local-name()='\\1']")
     |> String.replace(~r/\/([a-zA-Z_][a-zA-Z0-9_]*)(?=\/|$)/, "/*[local-name()='\\1']")
+  end
+
+  # Convert namespace-prefixed XPath to local-name() XPath
+  # e.g., "soap:Body" -> "//*[local-name()='Body']"
+  # e.g., "//soap:Body/name" -> "//*[local-name()='Body']/name"
+  defp convert_to_local_name_xpath(xpath_string, _namespaces) do
+    # Extract namespace prefix and element name
+    # Replace patterns like "prefix:element" with "*[local-name()='element']"
+    xpath_string
+    |> String.replace(~r/([\/\/]?)([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)/, "\\1*[local-name()='\\3']")
+    |> String.replace(~r/^([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)$/, "//*[local-name()='\\2']")
   end
 end

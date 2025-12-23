@@ -30,6 +30,7 @@ defmodule Noap.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test]},
       {:ex_doc, "~> 0.39", only: [:dev, :docs], runtime: false},
       {:expath, "~> 0.2"},
+      {:meeseeks, "~> 0.18"},
       {:sweet_xml, "~> 0.7", only: :test},
       {:xml_builder, "~> 2.4"},
       {:yaml_elixir, "~> 2.12", optional: true}
